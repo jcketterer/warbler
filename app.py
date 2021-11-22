@@ -281,6 +281,10 @@ def display_likes(user_id):
 @app.route("/messages/<int:message_id>/like", methods=["POST"])
 def adding_like(message_id):
 
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
     liked_message = Message.query.get_or_404(message_id)
     if liked_message.user_id == g.user.id:
         return abort(403)
@@ -328,7 +332,7 @@ def messages_add():
 def messages_show(message_id):
     """Show a message."""
 
-    msg = Message.query.get(message_id)
+    msg = Message.query.get_or_404(message_id)
 
     return render_template("messages/show.html", message=msg)
 
@@ -341,7 +345,11 @@ def messages_destroy(message_id):
         flash("Access unauthorized.", "danger")
         return redirect("/")
 
-    msg = Message.query.get(message_id)
+    msg = Message.query.get_or_404(message_id)
+    if msg.user_id != g.user.id:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
     db.session.delete(msg)
     db.session.commit()
 

@@ -7,6 +7,7 @@
 
 import os
 from unittest import TestCase
+from sqlalchemy import exc
 
 from models import db, User, Message, Follows
 
@@ -76,48 +77,76 @@ class UserModelTestCase(TestCase):
         self.assertEqual(len(u.messages), 0)
         self.assertEqual(len(u.followers), 0)
 
+    def test_follows(self):
 
-def test_follows(self):
+        self.user_1.following.append(self.user_2)
+        db.session.commit()
 
-    self.user_1.following.append(self.user_2)
-    db.session.commit()
+        self.assertEqual(len(self.user_2.following), 0)
+        self.assertEqual(len(self.user_2.followers), 1)
+        self.assertEqual(len(self.user_1.followers), 0)
+        self.assertEqual(len(self.user_1.following), 1)
 
-    self.assertEqual(len(self.user_2.following), 0)
-    self.assertEqual(len(self.user_2.following), 1)
-    self.assertEqual(len(self.user_1.following), 0)
-    self.assertEqual(len(self.user_1.following), 1)
+        self.assertEqual(self.user_2.followers[0].id, self.user_1.id)
+        self.assertEqual(self.user_1.following[0].id, self.user_2.id)
 
-    self.assertEqual(self.user_2.followers[0].id, self.user_1.id)
-    self.assertEqual(self.user_1.followers[0].id, self.user_2.id)
+    def test_following(self):
 
+        self.user_1.following.append(self.user_2)
+        db.session.commit()
 
-def test_following(self):
+        self.assertTrue(self.user_1.is_following(self.user_2))
+        self.assertFalse(self.user_2.is_following(self.user_1))
 
-    self.user_1.following.append(self.user_2)
-    db.session.commit()
+    def test_followed_by(self):
+        self.user_1.following.append(self.user_2)
+        db.session.commit()
 
-    self.assertTrue(self.user_1.is_following(self.user_2))
-    self.assertFalse(self.user_2.is_following(self.user_1))
+        self.assertTrue(self.user_2.is_followed_by(self.user_1))
+        self.assertFalse(self.user_1.is_followed_by(self.user_2))
 
+    def test_correct_signup(self):
+        test_user = User.signup("testermctest", "mctest@tester.com", "password", None)
+        user_id = 12345
+        test_user.id = user_id
+        db.session.commit()
 
-def test_followed_by(self):
-    self.user_1.following.append(self.user_2)
-    db.session.commit()
+        test_user = User.query.get(user_id)
 
-    self.assertTrue(self.user_1.is_followed_by(self.user_2))
-    self.assertFalse(self.user_2.is_followed_by(self.user_1))
+        self.assertIsNotNone(test_user)
+        self.assertEqual(test_user.username, "testermctest")
+        self.assertEqual(test_user.email, "mctest@tester.com")
+        self.assertNotEqual(test_user.password, "password")
+        self.assertTrue(test_user.password.startswith("$2b$"))
 
+    def test_incorrect_username(self):
+        invalid = User.signup(None, "test@tester.com", "password", None)
+        user_id = 12345438
+        invalid.id = user_id
+        with self.assertRaises(exc.IntegrityError) as context:
+            db.session.commit()
 
-def test_correct_signup(self):
-    test_user = User.signup("testermctest", "mctest@tester.com", "password", None)
-    user_id = 12345
-    user_test_id = user_id
-    db.session.commit()
+    def test_incorrect_email(self):
+        invalid = User.signup("testtest", None, "password", None)
+        user_id = 123
+        invalid.id = user_id
+        with self.assertRaises(exc.IntegrityError) as context:
+            db.session.commit()
 
-    test_user = User.query.get(user_id)
+    def test_incorrect_password(self):
+        with self.assertRaises(ValueError) as context:
+            User.signup("testtest", "testemail@email.com", "", None)
 
-    self.assertIsNotNone(test_user)
-    self.assertEqual(test_user.username, "testermctest")
-    self.assertEqual(test_user.email, "mctest@tester.com")
-    self.assertNotEqual(test_user.password, "password")
-    self.assertTrue(test_user.password.startswith("$2b$"))
+        with self.assertRaises(ValueError) as context:
+            User.signup("testtest", "testemail@email.com", None, None)
+
+    def test_valid_auth(self):
+        user = User.authenticate(self.user_1.username, "password")
+        self.assertIsNotNone(user)
+        self.assertEqual(user.id, self.user_1_id)
+
+    def test_incorrect_username_auth(self):
+        self.assertFalse(User.authenticate("wrongusername", "password"))
+
+    def test_incorrect_password_auth(self):
+        self.assertFalse(User.authenticate(self.user_1.username, "incorrectpassword"))
